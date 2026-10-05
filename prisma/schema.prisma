@@ -1,0 +1,59 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model GuildConfig {
+  id                String   @id @default(cuid())
+  guildId           String   @unique
+  moderationLogChannel String?
+  welcomeChannel    String?
+  ticketCategoryId  String?
+  ticketSupportRole String?
+  xpEnabled         Boolean  @default(true)
+  xpCooldownMs      Int      @default(60000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model MemberXP {
+  id        String    @id @default(cuid())
+  guildId   String
+  userId    String
+  xp        Int       @default(0)
+  level     Int       @default(1)
+  lastXpAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([guildId, userId])
+}
+
+model ModerationCase {
+  id          String   @id @default(cuid())
+  guildId     String
+  userId      String
+  moderatorId String
+  action      String
+  reason      String?
+  createdAt   DateTime @default(now())
+}
+
+model Ticket {
+  id         String   @id @default(cuid())
+  guildId    String
+  channelId  String
+  creatorId  String
+  assigneeId String?
+  status     String   @default("open")
+  ticketType String   @default("general")
+  number     Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([guildId, number])
+}

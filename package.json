@@ -1,0 +1,29 @@
+{
+  "name": "discord-server-bot",
+  "version": "1.0.0",
+  "description": "Discord server management bot with ticketing and moderation modules",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@discordjs/rest": "^2.3.0",
+    "@prisma/client": "^5.17.0",
+    "discord.js": "^14.16.0",
+    "dotenv": "^16.4.5",
+    "pino": "^9.2.0",
+    "pino-pretty": "^11.0.0",
+    "prisma": "^5.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.4"
+  }
+}
