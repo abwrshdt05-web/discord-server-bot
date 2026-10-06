@@ -4,8 +4,8 @@ import { logEventAction } from '../../services/eventService';
 
 export default {
   data: new SlashCommandBuilder()
-    .setName('فعالية-حذف')
-    .setDescription('حذف فعالية')
+    .setName('فعالية-انهاء')
+    .setDescription('إنهاء فعالية محددة')
     .addStringOption((option) => option.setName('الاسم').setDescription('اسم الفعالية').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
@@ -22,8 +22,8 @@ export default {
       return;
     }
 
-    await prisma.guildEvent.delete({ where: { id: event.id } });
-    await logEventAction(interaction.guild, '🗑️ تم حذف فعالية', `الفعالية: ${event.name}\nبواسطة: <@${interaction.user.id}>`);
-    await interaction.reply({ content: `✅ تم حذف فعالية: ${event.name}`, ephemeral: true });
+    await prisma.guildEvent.update({ where: { id: event.id }, data: { status: 'ended' } });
+    await logEventAction(interaction.guild, '⏹️ تم إنهاء فعالية', `الفعالية: ${event.name}\nمنظم: <@${event.organizerId}>`);
+    await interaction.reply({ content: `✅ تم إنهاء فعالية: ${event.name}`, ephemeral: true });
   },
 };

@@ -5,13 +5,11 @@ import { logger } from './utils/logger';
 import { CommandHandler } from './handlers/commandHandler';
 import { registerReadyEvent } from './events/ready';
 import { registerInteractionCreateEvent } from './events/interactionCreate';
-import { registerMessageCreateEvent } from './events/messageCreate';
 import { registerMessageDeleteEvent } from './events/messageDelete';
 import { registerMessageUpdateEvent } from './events/messageUpdate';
 import { registerGuildMemberAddEvent } from './events/guildMemberAdd';
 import { registerGuildMemberRemoveEvent } from './events/guildMemberRemove';
 import { registerVoiceStateUpdateEvent } from './events/voiceStateUpdate';
-import { setupStaffRoles, setupServerChannels } from './services/staffService';
 
 const client = new Client({
   intents: [
@@ -20,7 +18,6 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.VoiceStates,
-    GatewayIntentBits.DirectMessages,
   ],
   partials: [Partials.Channel, Partials.GuildMember, Partials.Message],
 });
@@ -38,18 +35,12 @@ async function bootstrap() {
     logger.info('✅ تم تسجيل الأوامر العالمية');
 
     registerReadyEvent(client);
-    registerInteractionCreateEvent(client, commandHandler);
-    registerMessageCreateEvent(client);
+    registerInteractionCreateEvent(client);
     registerMessageDeleteEvent(client);
     registerMessageUpdateEvent(client);
     registerGuildMemberAddEvent(client);
     registerGuildMemberRemoveEvent(client);
     registerVoiceStateUpdateEvent(client);
-
-    client.on(Events.GuildCreate, async (guild) => {
-      await setupStaffRoles(guild);
-      await setupServerChannels(guild);
-    });
 
     await client.login(env.DISCORD_TOKEN);
   } catch (error) {
