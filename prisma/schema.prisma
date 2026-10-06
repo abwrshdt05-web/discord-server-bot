@@ -8,52 +8,166 @@ generator client {
 }
 
 model GuildConfig {
-  id                String   @id @default(cuid())
-  guildId           String   @unique
+  id                   String   @id @default(cuid())
+  guildId              String   @unique
   moderationLogChannel String?
-  welcomeChannel    String?
-  ticketCategoryId  String?
-  ticketSupportRole String?
-  xpEnabled         Boolean  @default(true)
-  xpCooldownMs      Int      @default(60000)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  ticketLogChannel     String?
+  welcomeChannel       String?
+  ticketCategoryId     String?
+  commandChannelId     String?
+  announcementChannelId String?
+  memberRoleId         String?
+  ticketSupportRoleId  String?
+  xpEnabled            Boolean  @default(true)
+  xpCooldownMs         Int      @default(60000)
+  xpMinAmount          Int      @default(10)
+  xpMaxAmount          Int      @default(30)
+  commandChatOnly      Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model StaffRole {
+  id          String   @id @default(cuid())
+  guildId     String
+  roleId      String
+  name        String
+  level       Int
+  permissions String[]
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([guildId, roleId])
+  @@index([guildId])
 }
 
 model MemberXP {
-  id        String    @id @default(cuid())
-  guildId   String
-  userId    String
-  xp        Int       @default(0)
-  level     Int       @default(1)
-  lastXpAt  DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  guildId       String
+  userId        String
+  xp            Int       @default(0)
+  level         Int       @default(1)
+  lastXpAt      DateTime?
+  lastMessageAt DateTime?
+  messageCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([guildId, userId])
+  @@index([guildId])
+}
+
+model WeeklyStat {
+  id           String   @id @default(cuid())
+  guildId      String
+  userId       String
+  week         Int
+  year         Int
+  xp           Int      @default(0)
+  messages     Int      @default(0)
+  voiceMinutes Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([guildId, userId, week, year])
+  @@index([guildId, week, year])
+}
+
+model MonthlyStat {
+  id           String   @id @default(cuid())
+  guildId      String
+  userId       String
+  month        Int
+  year         Int
+  xp           Int      @default(0)
+  messages     Int      @default(0)
+  voiceMinutes Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([guildId, userId, month, year])
+  @@index([guildId, month, year])
 }
 
 model ModerationCase {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   guildId     String
+  caseId      Int
   userId      String
   moderatorId String
   action      String
   reason      String?
+  duration    Int?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([guildId, caseId])
+  @@index([guildId])
+  @@index([userId])
+}
+
+model Warning {
+  id          String   @id @default(cuid())
+  guildId     String
+  userId      String
+  moderatorId String
+  reason      String
+  count       Int      @default(1)
   createdAt   DateTime @default(now())
+
+  @@index([guildId, userId])
 }
 
 model Ticket {
-  id         String   @id @default(cuid())
-  guildId    String
-  channelId  String
-  creatorId  String
-  assigneeId String?
-  status     String   @default("open")
-  ticketType String   @default("general")
-  number     Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String    @id @default(cuid())
+  guildId     String
+  channelId   String    @unique
+  creatorId   String
+  assigneeId  String?
+  closedBy    String?
+  status      String    @default("open")
+  ticketType  String    @default("support")
+  number      Int
+  transcript  String?
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+  updatedAt   DateTime  @updatedAt
 
   @@unique([guildId, number])
+  @@index([guildId])
+}
+
+model LevelReward {
+  id        String   @id @default(cuid())
+  guildId   String
+  level     Int
+  roleId    String
+  createdAt DateTime @default(now())
+
+  @@unique([guildId, level])
+  @@index([guildId])
+}
+
+model VoiceActivity {
+  id           String    @id @default(cuid())
+  guildId      String
+  userId       String
+  totalMinutes Int       @default(0)
+  joinedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([guildId, userId])
+}
+
+model Room {
+  id        String   @id @default(cuid())
+  guildId   String
+  channelId String   @unique
+  creatorId String
+  name      String
+  temporary Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
