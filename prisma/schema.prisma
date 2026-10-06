@@ -8,23 +8,48 @@ generator client {
 }
 
 model GuildConfig {
-  id                   String   @id @default(cuid())
-  guildId              String   @unique
-  moderationLogChannel String?
-  ticketLogChannel     String?
-  welcomeChannel       String?
-  ticketCategoryId     String?
-  commandChannelId     String?
-  announcementChannelId String?
-  memberRoleId         String?
-  ticketSupportRoleId  String?
-  xpEnabled            Boolean  @default(true)
-  xpCooldownMs         Int      @default(60000)
-  xpMinAmount          Int      @default(10)
-  xpMaxAmount          Int      @default(30)
-  commandChatOnly      Boolean  @default(false)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  guildId                String   @unique
+  moderationLogChannel   String?
+  ticketLogChannel       String?
+  welcomeChannel         String?
+  ticketCategoryId       String?
+  commandChannelId       String?
+  announcementChannelId  String?
+  memberRoleId           String?
+  ticketSupportRoleId    String?
+  xpEnabled              Boolean  @default(true)
+  xpCooldownMs           Int      @default(60000)
+  xpMinAmount            Int      @default(10)
+  xpMaxAmount            Int      @default(30)
+  commandChatOnly        Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+model LogSetting {
+  id                 String   @id @default(cuid())
+  guildId            String   @unique
+  generalEnabled     Boolean  @default(true)
+  messagesEnabled    Boolean  @default(true)
+  membersEnabled     Boolean  @default(true)
+  voiceEnabled       Boolean  @default(true)
+  rolesEnabled       Boolean  @default(true)
+  channelsEnabled    Boolean  @default(true)
+  moderationEnabled  Boolean  @default(true)
+  ticketsEnabled     Boolean  @default(true)
+  levelsEnabled      Boolean  @default(true)
+  generalChannelId   String?
+  messageChannelId   String?
+  memberChannelId    String?
+  voiceChannelId     String?
+  roleChannelId      String?
+  channelChannelId   String?
+  moderationChannelId String?
+  ticketChannelId    String?
+  levelChannelId     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model StaffRole {
@@ -121,19 +146,19 @@ model Warning {
 }
 
 model Ticket {
-  id          String    @id @default(cuid())
-  guildId     String
-  channelId   String    @unique
-  creatorId   String
-  assigneeId  String?
-  closedBy    String?
-  status      String    @default("open")
-  ticketType  String    @default("support")
-  number      Int
-  transcript  String?
-  createdAt   DateTime  @default(now())
-  closedAt    DateTime?
-  updatedAt   DateTime  @updatedAt
+  id         String    @id @default(cuid())
+  guildId    String
+  channelId  String    @unique
+  creatorId  String
+  assigneeId String?
+  closedBy   String?
+  status     String    @default("open")
+  ticketType String    @default("support")
+  number     Int
+  transcript String?
+  createdAt  DateTime  @default(now())
+  closedAt   DateTime?
+  updatedAt  DateTime  @updatedAt
 
   @@unique([guildId, number])
   @@index([guildId])

@@ -1,37 +1,76 @@
-import {
-  SlashCommandBuilder,
-  PermissionFlagsBits,
-  CommandInteraction,
-} from 'discord.js';
+import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
+import { env } from './config/env';
+import { prisma } from './db/client';
+import { logger } from './utils/logger';
+import { CommandHandler } from './handlers/commandHandler';
+import { registerReadyEvent } from './events/ready';
+import { registerInteractionCreateEvent } from './events/interactionCreate';
+import { registerMessageCreateEvent } from './events/messageCreate';
+import { registerMessageDeleteEvent } from './events/messageDelete';
+import { registerMessageUpdateEvent } from './events/messageUpdate';
+import { registerGuildMemberAddEvent } from './events/guildMemberAdd';
+import { registerGuildMemberRemoveEvent } from './events/guildMemberRemove';
+import { registerVoiceStateUpdateEvent } from './events/voiceStateUpdate';
+import { setupStaffRoles, setupServerChannels } from './services/staffService';
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('clear')
-    .setDescription('Delete multiple messages from this channel')
-    .addIntegerOption((option) =>
-      option.setName('amount').setDescription('Number of messages to delete').setRequired(true).setMinValue(1).setMaxValue(100)
-    ),
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.VoiceStates,
+    GatewayIntentBits.DirectMessages,
+  ],
+  partials: [Partials.Channel, Partials.GuildMember, Partials.Message],
+});
 
-  async execute(interaction: CommandInteraction) {
-    if (!interaction.guild) {
-      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
-      return;
-    }
+const commandHandler = new CommandHandler();
 
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
-      await interaction.reply({ content: 'You do not have permission to clear messages.', ephemeral: true });
-      return;
-    }
+async function bootstrap() {
+  try {
+    logger.info('🚀 جاري تشغيل البوت...');
 
-    const amount = interaction.options.getInteger('amount', true);
+    await commandHandler.load();
+    logger.info(`✅ تم تحميل ${commandHandler.commands.size} أمر`);
 
-    if (!interaction.channel || !interaction.channel.isTextBased()) {
-      await interaction.reply({ content: 'This command must be used in a text channel.', ephemeral: true });
-      return;
-    }
+    await commandHandler.registerGlobalCommands();
+    logger.info('✅ تم تسجيل الأوامر العالمية');
 
-    const messages = await interaction.channel.messages.fetch({ limit: amount });
-    await interaction.channel.bulkDelete(messages, true);
-    await interaction.reply({ content: `✅ Deleted ${messages.size} messages.`, ephemeral: true });
-  },
-};
+    registerReadyEvent(client);
+    registerInteractionCreateEvent(client, commandHandler);
+    registerMessageCreateEvent(client);
+    registerMessageDeleteEvent(client);
+    registerMessageUpdateEvent(client);
+    registerGuildMemberAddEvent(client);
+    registerGuildMemberRemoveEvent(client);
+    registerVoiceStateUpdateEvent(client);
+
+    client.on(Events.GuildCreate, async (guild) => {
+      await setupStaffRoles(guild);
+      await setupServerChannels(guild);
+    });
+
+    await client.login(env.DISCORD_TOKEN);
+  } catch (error) {
+    logger.error('❌ فشل تشغيل البوت:', error);
+    process.exit(1);
+  }
+}
+
+bootstrap();
+
+process.on('SIGINT', async () => {
+  logger.info('⏹️ إيقاف البوت...');
+  await client.destroy();
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('❌ خطأ غير معالج:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('❌ استثناء غير متوقع:', error);
+});
