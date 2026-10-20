@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits } from 'discord.js';
+import { ChannelType, SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction, PermissionFlagsBits } from 'discord.js';
 import { createRolePanel } from '../../services/interactiveRoleService';
 
 export default {
@@ -15,9 +15,10 @@ export default {
       return;
     }
 
-    const channel = interaction.options.getChannel('القناة', true);
+    const channelOption = interaction.options.getChannel('القناة', true);
+    const channel = await interaction.guild.channels.fetch(channelOption.id).catch(() => null);
     const category = interaction.options.getString('الفئة', true);
-    if (!channel || !channel.isTextBased()) {
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
       await interaction.reply({ content: '❌ يجب اختيار قناة نصية.', ephemeral: true });
       return;
     }

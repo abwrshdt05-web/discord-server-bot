@@ -1,6 +1,6 @@
 import pino from 'pino';
 
-export const logger = pino({
+const baseLogger = pino({
   transport: {
     target: 'pino-pretty',
     options: {
@@ -10,3 +10,22 @@ export const logger = pino({
     },
   },
 });
+
+type LogLevel = 'info' | 'warn' | 'error';
+
+function write(level: LogLevel, args: unknown[]) {
+  const method = baseLogger[level].bind(baseLogger) as (...values: unknown[]) => void;
+  if (typeof args[0] === 'string' && args.length > 1) {
+    const [message, ...details] = args;
+    const err = details.find((detail) => detail instanceof Error);
+    method(err ? { err, details } : { details }, message);
+    return;
+  }
+  method(...args);
+}
+
+export const logger = {
+  info: (...args: unknown[]) => write('info', args),
+  warn: (...args: unknown[]) => write('warn', args),
+  error: (...args: unknown[]) => write('error', args),
+};

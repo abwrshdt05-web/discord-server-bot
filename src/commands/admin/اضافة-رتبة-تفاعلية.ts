@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { createRolePanel } from '../../services/interactiveRoleService';
 
 export default {

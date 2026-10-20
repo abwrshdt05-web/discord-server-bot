@@ -42,10 +42,10 @@ async function getLogChannel(guild: Guild, type: LogType) {
       channelId = settings.channelChannelId ?? settings.generalChannelId ?? null;
       break;
     case 'moderation':
-      channelId = settings.moderationChannelId ?? settings.generalChannelId ?? null;
+      channelId = settings.moderationChannelId ?? null;
       break;
     case 'tickets':
-      channelId = settings.ticketChannelId ?? settings.generalChannelId ?? null;
+      channelId = settings.ticketChannelId ?? null;
       break;
     case 'levels':
       channelId = settings.levelChannelId ?? settings.generalChannelId ?? null;
@@ -62,14 +62,14 @@ export async function sendLogEmbed(guild: Guild, type: LogType, title: string, d
 
   const embed = new EmbedBuilder()
     .setColor('#5865F2')
-    .setTitle(title)
-    .setDescription(description)
+    .setTitle(title.slice(0, 256))
+    .setDescription(description.slice(0, 4000))
     .setTimestamp();
 
   if (fields.length) embed.addFields(fields);
 
-  await channel.send({ embeds: [embed] }).catch((error) => {
-    logger.warn(`Could not send ${type} log: ${error.message}`);
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch((error) => {
+    logger.warn({ err: error, type }, `Could not send ${type} log`);
   });
 }
 
@@ -127,7 +127,7 @@ export async function logChannelAction(guild: Guild, action: string, channelName
   await sendLogEmbed(guild, 'channels', `📁 ${action}`, `**الروم:** ${channelName}${executorId ? `\n**بواسطة:** <@${executorId}>` : ''}`);
 }
 
-export async function logModerationEvent(guild: Guild, action: string, userId: string, moderatorId: string, reason?: string, caseId?: number) {
+export async function logModerationEvent(guild: Guild, action: string, userId: string, moderatorId: string, reason?: string, caseId?: string | number) {
   await sendLogEmbed(guild, 'moderation', '🛡️ إجراء إداري', `**العضو:** <@${userId}>\n**الإجراء:** ${action}\n**بواسطة:** <@${moderatorId}>${reason ? `\n**السبب:** ${reason}` : ''}`, [
     { name: 'رقم القضية', value: caseId ? `#${caseId}` : 'غير محدد', inline: true },
   ]);

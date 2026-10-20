@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction, PermissionFlagsBits } from 'discord.js';
 import { prisma } from '../../db/client';
 
 export default {

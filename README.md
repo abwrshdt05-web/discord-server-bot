@@ -1,52 +1,55 @@
-import { Client, GatewayIntentBits, Partials } from 'discord.js';
-import { env } from './config/env';
-import { prisma } from './db/client';
-import { logger } from './utils/logger';
-import { CommandHandler } from './handlers/commandHandler';
-import { registerReadyEvent } from './events/ready';
-import { registerInteractionCreateEvent } from './events/interactionCreate';
+# بوت إدارة سيرفر Discord
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-  partials: [Partials.Channel, Partials.GuildMember, Partials.Message],
-});
+بوت TypeScript مبني باستخدام Discord.js 14 وPrisma وPostgreSQL. يتضمن لوحة تذاكر عربية، أوامر إشراف، تسجيلًا للأحداث، وأداة آمنة لمعاينة بنية القنوات.
 
-const commandHandler = new CommandHandler();
+## المتطلبات
 
-async function bootstrap() {
-  await commandHandler.load();
-  await commandHandler.registerGlobalCommands();
+- Node.js 20 أو أحدث.
+- قاعدة PostgreSQL متاحة من بيئة التشغيل.
+- تطبيق Discord Bot مع صلاحيات `bot` و`applications.commands`.
+- متغيرات التشغيل: `DISCORD_TOKEN` و`DISCORD_CLIENT_ID` و`DATABASE_URL`.
 
-  registerReadyEvent(client);
-  registerInteractionCreateEvent(client, commandHandler);
+أضف القيم إلى Replit Secrets أو مدير أسرار الاستضافة. لا تحفظ التوكن أو رابط قاعدة البيانات في Git أو في المحادثة. لا يحتاج هذا البوت إلى `DISCORD_CLIENT_SECRET`.
 
-  client.login(env.DISCORD_TOKEN).catch((error) => {
-    logger.error(error);
-    process.exit(1);
-  });
-}
+في Discord Developer Portal فعّل **Server Members Intent**، وفعّل **Message Content Intent** إذا أردت تسجيل محتوى الرسائل. يحتاج البوت إلى صلاحيات قراءة القنوات، إرسال الرسائل والتضمينات والمرفقات، وإدارة القنوات. أضف `Manage Roles` فقط إذا كنت ستستخدم أوامر إعداد الرتب، واجعل رتبة البوت أعلى الرتب التي يحتاج لإدارتها.
 
-bootstrap().catch((error) => {
-  logger.error(error);
-  process.exit(1);
-});
+## التثبيت والتشغيل
 
-process.on('SIGINT', async () => {
-  logger.info('Shutting down...');
-  await client.destroy();
-  await prisma.$disconnect();
-  process.exit(0);
-});
+```sh
+npm install
+npm run build
+```
 
-process.on('unhandledRejection', (reason) => {
-  logger.error(reason);
-});
+للقاعدة الجديدة والفارغة فقط:
 
-process.on('uncaughtException', (error) => {
-  logger.error(error);
-});
+```sh
+npm run prisma:deploy
+npm start
+```
+
+`npm start` يشغل عملية واحدة، ويتعامل مع `SIGINT` و`SIGTERM` للإغلاق المنظم. في بيئة التطوير استخدم `npm run dev`. الاختبارات المحلية: `npm test`.
+
+**قاعدة موجودة:** لا تشغّل الترحيل الأولي على قاعدة قد تحتوي جداول أو بيانات. راجع مخططها وخذ نسخة احتياطية ثم حدّد طريقة baseline المناسبة قبل `prisma migrate deploy`؛ لم يتم اختبار هذا المخطط على قاعدة المستخدم.
+
+## نظام التذاكر
+
+نفّذ `/ticket setup` من قناة نصية عامة. يمكن تحديد تصنيف التذاكر، رتبة الدعم، وقناة لوق خاصة. يعيد الأمر تحديث اللوحة المحفوظة بدل نشر لوحة جديدة كل مرة.
+
+- أنواع اللوحة: عام، دعم فني، بلاغ، اعتراض.
+- القنوات خاصة بصاحب التذكرة وفريق الدعم المخوّل والبوت.
+- يمنع التكرار حسب النوع افتراضيًا؛ خيار `allow-duplicates` يغيّر ذلك.
+- أزرار الإغلاق والاستلام والإدارة؛ الإغلاق يحفظ الحالة ويخفي القناة عن صاحبها.
+- الترانسكريبت وإرفاقه في اللوق عند الإغلاق مفعّلان افتراضيًا. تسجيل رسائل التذاكر اختياري ومعطّل افتراضيًا.
+- الأوامر `/ticket close`, `/ticket reopen`, `/ticket claim`, و`/ticket transcript` متاحة وفق الصلاحيات.
+
+## تنظيف القنوات
+
+- `/تنظيف-القنوات preview` يعرض القنوات الناقصة والتكرارات دون تغيير شيء.
+- `/تنظيف-القنوات apply` ينشئ الناقص فقط؛ لا ينقل أو يعيد تسمية أو يحذف القنوات القائمة.
+- `/تنظيف-القنوات delete-duplicate` يفحص قناة مكررة. لا يسمح إلا بطلب حذف قناة فارغة لا تحتوي رسائل أو سجل تذكرة، ثم يتطلب زر تأكيد ويعيد الفحص قبل الحذف. القنوات ذات المحتوى أو المرتبطة بالتذاكر محمية.
+
+## التشغيل المستمر
+
+المستودع لا يحتوي إعداد نشر مخصصًا لمنصة استضافة، لذلك لا يمكن ضمان توفر 24/7 من الشيفرة وحدها. شغّله كـ **worker/process دائم** على منصتك، وفعّل إعادة التشغيل التلقائي بعد التعطل. أضف الأسرار وقاعدة البيانات في مدير أسرار المنصة. لا تستخدم self-bot أو نشاطًا وهميًا أو خدمة ping لإبقاء العملية حية.
+
+لم يتم تشغيل البوت على Discord أو اختباره على خادم حي في هذه البيئة؛ يلزم إعداد الأسرار وقاعدة البيانات وصلاحيات البوت على الاستضافة الفعلية.

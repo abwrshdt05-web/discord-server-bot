@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction } from 'discord.js';
 import { prisma } from '../../db/client';
 import { buildEventEmbed } from '../../services/eventService';
 

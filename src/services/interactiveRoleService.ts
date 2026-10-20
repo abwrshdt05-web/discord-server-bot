@@ -1,11 +1,34 @@
-import { ButtonInteraction, GuildMember, Interaction, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  ButtonStyle,
+  EmbedBuilder,
+  Guild,
+  GuildMember,
+  Interaction,
+} from 'discord.js';
 import { prisma } from '../db/client';
 
-export async function ensureInteractiveRole(guildId: string, roleId: string, category: string, label: string, emoji?: string) {
+export async function ensureInteractiveRole(
+  guild: Guild,
+  roleName: string,
+  category: string,
+  emoji = '🎉',
+) {
+  let role = guild.roles.cache.find((candidate) => candidate.name === roleName);
+  if (!role) {
+    role = await guild.roles.create({
+      name: roleName,
+      color: '#5865F2',
+      reason: 'إنشاء رتبة تفاعلية حسب طلب الإدارة',
+    });
+  }
+
   return prisma.interactiveRole.upsert({
-    where: { guildId_roleId: { guildId, roleId } },
-    update: { category, label, emoji: emoji ?? null },
-    create: { guildId, roleId, category, label, emoji: emoji ?? null },
+    where: { guildId_roleId: { guildId: guild.id, roleId: role.id } },
+    update: { category, label: roleName, emoji },
+    create: { guildId: guild.id, roleId: role.id, category, label: roleName, emoji },
   });
 }
 
@@ -17,7 +40,7 @@ export async function getInteractiveRoles(guildId: string, category?: string) {
 }
 
 export async function toggleInteractiveRole(interaction: ButtonInteraction) {
-  if (!interaction.guild || !interaction.member) return;
+  if (!interaction.guild) return;
 
   const [, roleId] = interaction.customId.split(':');
   const role = await interaction.guild.roles.fetch(roleId).catch(() => null);
@@ -26,7 +49,11 @@ export async function toggleInteractiveRole(interaction: ButtonInteraction) {
     return;
   }
 
-  const member = interaction.member as GuildMember;
+  const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) {
+    await interaction.reply({ content: '❌ تعذر العثور على عضويتك.', ephemeral: true });
+    return;
+  }
   if (member.roles.cache.has(role.id)) {
     await member.roles.remove(role);
     await interaction.reply({ content: `✅ تم إزالة رتبتك: ${role.name}`, ephemeral: true });
@@ -37,10 +64,15 @@ export async function toggleInteractiveRole(interaction: ButtonInteraction) {
   await interaction.reply({ content: `✅ تم إضافة رتبتك: ${role.name}`, ephemeral: true });
 }
 
-export async function buildRolePanelEmbed(title: string, description: string, category: string) {
-  const roles = await getInteractiveRoles(title.includes('🎮') ? 'games' : category);
+export async function buildRolePanelEmbed(
+  guild: Guild,
+  title: string,
+  description: string,
+  category: string,
+) {
+  const roles = await getInteractiveRoles(guild.id, category);
   const lines = roles.length
-    ? roles.map((entry) => `• ${entry.emoji ? `${entry.emoji} ` : ''}${entry.label}`).join('\n')
+    ? roles.map((entry) => `• ${entry.emoji ? `${entry.emoji} ` : ''}${entry.label ?? 'رتبة'}`).join('\n')
     : 'لا توجد رتب في هذه الفئة.';
 
   return new EmbedBuilder()
@@ -50,57 +82,48 @@ export async function buildRolePanelEmbed(title: string, description: string, ca
     .setTimestamp();
 }
 
-export async function buildRolePanelButtons(guildId: string, category: string) {
-  const roles = await getInteractiveRoles(guildId, category);
+export async function buildRolePanelButtons(guild: Guild, category: string) {
+  const roles = await getInteractiveRoles(guild.id, category);
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
 
-  for (let i = 0; i < roles.length; i += 5) {
+  for (let index = 0; index < roles.length; index += 5) {
     const row = new ActionRowBuilder<ButtonBuilder>();
-    const slice = roles.slice(i, i + 5);
-    for (const role of slice) {
-      const roleObj = await guildId ? (await (await import('discord.js')).Guild.prototype.roles.fetch.call(null, role.roleId)).catch(() => null) : null;
-      if (!roleObj) continue;
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`role_toggle:${role.roleId}`)
-          .setLabel(role.label)
-          .setEmoji(role.emoji || undefined)
-          .setStyle(ButtonStyle.Primary)
-      );
+    for (const entry of roles.slice(index, index + 5)) {
+      const role = await guild.roles.fetch(entry.roleId).catch(() => null);
+      if (!role) continue;
+      const button = new ButtonBuilder()
+        .setCustomId(`role_toggle:${entry.roleId}`)
+        .setLabel(entry.label ?? role.name)
+        .setStyle(ButtonStyle.Primary);
+      if (entry.emoji) button.setEmoji(entry.emoji);
+      row.addComponents(button);
     }
-    if (row.components.length > 0) rows.push(row);
+    if (row.components.length) rows.push(row);
   }
-
   return rows;
 }
 
-export async function createInteractiveRolePanel(guild: any, category: string, title: string, description: string) {
-  const roles = await getInteractiveRoles(guild.id, category);
-  const row = new ActionRowBuilder<ButtonBuilder>();
+export async function createInteractiveRolePanel(
+  guild: Guild,
+  category: string,
+  title: string,
+  description: string,
+) {
+  const embed = await buildRolePanelEmbed(guild, title, description, category);
+  const components = await buildRolePanelButtons(guild, category);
+  return { embed, components };
+}
 
-  for (const role of roles) {
-    const roleObj = await guild.roles.fetch(role.roleId).catch(() => null);
-    if (!roleObj) continue;
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`role_toggle:${role.roleId}`)
-        .setLabel(role.label)
-        .setEmoji(role.emoji || undefined)
-        .setStyle(ButtonStyle.Primary)
-    );
-  }
-
-  const embed = new EmbedBuilder()
-    .setColor('#5865F2')
-    .setTitle(title)
-    .setDescription(`${description}\n\n${roles.length ? 'اختر الرتبة المناسبة لك' : 'لا توجد رتب مفعلة في هذه الفئة'}`)
-    .setTimestamp();
-
-  return { embed, components: row.components.length ? [row] : [] };
+export async function createRolePanel(
+  guild: Guild,
+  category: string,
+  title: string,
+  description: string,
+) {
+  return createInteractiveRolePanel(guild, category, title, description);
 }
 
 export async function handleRolePanelInteraction(interaction: Interaction) {
-  if (!interaction.isButton()) return;
-  if (!interaction.customId.startsWith('role_toggle:')) return;
+  if (!interaction.isButton() || !interaction.customId.startsWith('role_toggle:')) return;
   await toggleInteractiveRole(interaction);
 }

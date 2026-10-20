@@ -16,7 +16,7 @@ export function registerVoiceStateUpdateEvent(client: Client) {
         await logVoiceState(newState.guild, userId, 'move', `${oldState.channel.name} -> ${newState.channel.name}`);
       }
     } catch (error) {
-      logger.error('Error logging voice event:', error);
+      logger.error({ err: error }, 'Error logging voice event');
     }
   });
 }
