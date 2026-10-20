@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction, PermissionFlagsBits } from 'discord.js';
 import { ensureInteractiveRole } from '../../services/interactiveRoleService';
 
 export default {

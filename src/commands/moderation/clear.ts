@@ -1,55 +1,72 @@
 import {
-  SlashCommandBuilder,
+  ChannelType,
+  ChatInputCommandInteraction,
   PermissionFlagsBits,
-  CommandInteraction,
+  SlashCommandBuilder,
+  TextChannel,
 } from 'discord.js';
 import { logModerationAction } from '../../services/moderationService';
+import { logger } from '../../utils/logger';
+
+const command = new SlashCommandBuilder()
+  .setName('clear')
+  .setDescription('حذف عدد من الرسائل الحديثة من القناة الحالية')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .addIntegerOption((option) =>
+    option.setName('amount').setDescription('عدد الرسائل (1–100)').setMinValue(1).setMaxValue(100).setRequired(true),
+  )
+  .addStringOption((option) =>
+    option.setName('reason').setDescription('سبب الحذف').setMaxLength(512).setRequired(false),
+  );
 
 export default {
-  data: new SlashCommandBuilder()
-    .setName('timeout')
-    .setDescription('Timeout a member for a given duration')
-    .addUserOption((option) =>
-      option.setName('user').setDescription('The member to timeout').setRequired(true)
-    )
-    .addIntegerOption((option) =>
-      option.setName('minutes').setDescription('Timeout duration in minutes').setRequired(true).setMinValue(1).setMaxValue(10080)
-    )
-    .addStringOption((option) =>
-      option.setName('reason').setDescription('Reason for timeout').setRequired(false)
-    ),
-
-  async execute(interaction: CommandInteraction) {
+  data: command,
+  async execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.guild) {
-      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      await interaction.reply({ content: '❌ هذا الأمر يعمل داخل السيرفر فقط.', ephemeral: true });
+      return;
+    }
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
+      await interaction.reply({ content: '❌ تحتاج صلاحية إدارة الرسائل.', ephemeral: true });
+      return;
+    }
+    if (
+      !interaction.channel ||
+      (interaction.channel.type !== ChannelType.GuildText &&
+        interaction.channel.type !== ChannelType.GuildAnnouncement)
+    ) {
+      await interaction.reply({ content: '❌ استخدم الأمر داخل قناة نصية.', ephemeral: true });
       return;
     }
 
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ModerateMembers)) {
-      await interaction.reply({ content: 'You do not have permission to timeout members.', ephemeral: true });
+    const amount = interaction.options.getInteger('amount', true);
+    const reason = interaction.options.getString('reason') || 'لم يُحدد سبب';
+    const channel = interaction.channel as TextChannel;
+    const botMember = await interaction.guild.members.fetchMe().catch(() => null);
+    if (!botMember?.permissionsIn(channel).has(PermissionFlagsBits.ManageMessages)) {
+      await interaction.reply({ content: '❌ البوت لا يملك صلاحية إدارة الرسائل في هذه القناة.', ephemeral: true });
       return;
     }
 
-    const targetUser = interaction.options.getUser('user', true);
-    const minutes = interaction.options.getInteger('minutes', true);
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-
-    const targetMember = interaction.guild.members.cache.get(targetUser.id) || await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-
-    if (!targetMember) {
-      await interaction.reply({ content: 'That user is not in the server.', ephemeral: true });
-      return;
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const deleted = await channel.bulkDelete(amount, true);
+      await logModerationAction({
+        guild: interaction.guild,
+        guildId: interaction.guild.id,
+        userId: interaction.user.id,
+        moderatorId: interaction.user.id,
+        action: 'clear',
+        reason: `${reason} (${deleted.size} رسالة)`,
+      });
+      await interaction.editReply(
+        deleted.size
+          ? `✅ حُذفت ${deleted.size} رسالة حديثة من <#${channel.id}>. الرسائل الأقدم من 14 يومًا لم تُحذف.`
+          : 'ℹ️ لم توجد رسائل حديثة قابلة للحذف.',
+      );
+    } catch (error) {
+      logger.error({ err: error, guildId: interaction.guild.id, channelId: channel.id }, 'Clear command failed');
+      await interaction.editReply('❌ تعذر حذف الرسائل. تحقق من صلاحيات البوت.');
     }
-
-    await targetMember.timeout(minutes * 60 * 1000, reason);
-    await logModerationAction({
-      guildId: interaction.guild.id,
-      userId: targetUser.id,
-      moderatorId: interaction.user.id,
-      action: 'timeout',
-      reason: `${reason} (${minutes} minutes)`,
-    });
-
-    await interaction.reply({ content: `✅ ${targetUser.tag} has been timed out for ${minutes} minutes.` });
   },
 };

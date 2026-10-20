@@ -1,15 +1,15 @@
-import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { env } from './config/env';
 import { prisma } from './db/client';
-import { logger } from './utils/logger';
 import { CommandHandler } from './handlers/commandHandler';
-import { registerReadyEvent } from './events/ready';
+import { registerGuildMemberAddEvent, registerGuildMemberRemoveEvent } from './events/guildMemberAdd';
 import { registerInteractionCreateEvent } from './events/interactionCreate';
+import { registerMessageCreateEvent } from './events/messageCreate';
 import { registerMessageDeleteEvent } from './events/messageDelete';
 import { registerMessageUpdateEvent } from './events/messageUpdate';
-import { registerGuildMemberAddEvent } from './events/guildMemberAdd';
-import { registerGuildMemberRemoveEvent } from './events/guildMemberRemove';
+import { registerReadyEvent } from './events/ready';
 import { registerVoiceStateUpdateEvent } from './events/voiceStateUpdate';
+import { logger } from './utils/logger';
 
 const client = new Client({
   intents: [
@@ -17,51 +17,66 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.VoiceStates,
+    GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Channel, Partials.GuildMember, Partials.Message],
 });
 
 const commandHandler = new CommandHandler();
+let shuttingDown = false;
 
-async function bootstrap() {
+async function shutdown(exitCode = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ exitCode }, 'Shutting down Discord bot');
+
   try {
-    logger.info('🚀 جاري تشغيل البوت...');
-
-    await commandHandler.load();
-    logger.info(`✅ تم تحميل ${commandHandler.commands.size} أمر`);
-
-    await commandHandler.registerGlobalCommands();
-    logger.info('✅ تم تسجيل الأوامر العالمية');
-
-    registerReadyEvent(client);
-    registerInteractionCreateEvent(client);
-    registerMessageDeleteEvent(client);
-    registerMessageUpdateEvent(client);
-    registerGuildMemberAddEvent(client);
-    registerGuildMemberRemoveEvent(client);
-    registerVoiceStateUpdateEvent(client);
-
-    await client.login(env.DISCORD_TOKEN);
+    client.destroy();
+    await prisma.$disconnect();
   } catch (error) {
-    logger.error('❌ فشل تشغيل البوت:', error);
-    process.exit(1);
+    logger.error({ err: error }, 'Error during graceful shutdown');
+    exitCode = 1;
+  } finally {
+    process.exit(exitCode);
   }
 }
 
-bootstrap();
+async function bootstrap() {
+  logger.info('Starting Discord bot');
+  await commandHandler.load();
+  logger.info({ commandCount: commandHandler.commands.size }, 'Slash commands loaded');
+  await commandHandler.registerGlobalCommands();
 
-process.on('SIGINT', async () => {
-  logger.info('⏹️ إيقاف البوت...');
-  await client.destroy();
-  await prisma.$disconnect();
-  process.exit(0);
+  registerReadyEvent(client);
+  registerInteractionCreateEvent(client, commandHandler);
+  registerMessageCreateEvent(client);
+  registerMessageDeleteEvent(client);
+  registerMessageUpdateEvent(client);
+  registerGuildMemberAddEvent(client);
+  registerGuildMemberRemoveEvent(client);
+  registerVoiceStateUpdateEvent(client);
+
+  client.on(Events.Error, (error) => logger.error({ err: error }, 'Discord client error'));
+  client.on(Events.Warn, (warning) => logger.warn({ warning }, 'Discord client warning'));
+  client.on(Events.ShardDisconnect, (event, shardId) =>
+    logger.warn({ shardId, code: event.code, reason: event.reason }, 'Discord shard disconnected; client will reconnect'),
+  );
+  client.on(Events.ShardReconnecting, (shardId) => logger.info({ shardId }, 'Discord shard reconnecting'));
+
+  await client.login(env.DISCORD_TOKEN);
+}
+
+void bootstrap().catch(async (error) => {
+  logger.error({ err: error }, 'Bot startup failed');
+  await shutdown(1);
 });
 
+process.once('SIGINT', () => void shutdown(0));
+process.once('SIGTERM', () => void shutdown(0));
 process.on('unhandledRejection', (reason) => {
-  logger.error('❌ خطأ غير معالج:', reason);
+  logger.error({ err: reason }, 'Unhandled promise rejection');
 });
-
-process.on('uncaughtException', (error) => {
-  logger.error('❌ استثناء غير متوقع:', error);
+process.once('uncaughtException', (error) => {
+  logger.error({ err: error }, 'Uncaught exception; shutting down');
+  void shutdown(1);
 });

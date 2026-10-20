@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, Guild, RoleCreateOptions } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction, PermissionFlagsBits, Guild, RoleCreateOptions } from 'discord.js';
 
 type RoleSpec = {
   name: string;
@@ -7,21 +7,21 @@ type RoleSpec = {
 
 const staffRoles: RoleSpec[] = [
   { name: 'المالك', options: { permissions: ['Administrator'] as any, color: 'DarkRed' } },
-  { name: 'نائب المالك', options: { permissions: ['Administrator'] as any, color: 'DarkRed' } },
+  { name: 'نائب المالك', options: { permissions: ['ManageGuild', 'ManageRoles', 'ManageChannels', 'ViewAuditLog', 'KickMembers', 'BanMembers'] as any, color: 'DarkRed' } },
   { name: 'مدير السيرفر', options: { permissions: ['ManageGuild', 'ManageRoles', 'ManageChannels', 'ViewAuditLog', 'KickMembers', 'BanMembers'] as any, color: 'DarkOrange' } },
   { name: 'رئيس الإدارة', options: { permissions: ['ManageGuild', 'ManageChannels', 'ManageRoles', 'ViewAuditLog'] as any, color: 'Orange' } },
   { name: 'مدير', options: { permissions: ['ManageChannels', 'ManageRoles', 'ManageMessages'] as any, color: 'Gold' } },
   { name: 'كبير المشرفين', options: { permissions: ['ManageMessages', 'ModerateMembers', 'KickMembers'] as any, color: 'Yellow' } },
   { name: 'مشرف', options: { permissions: ['ManageMessages', 'ModerateMembers'] as any, color: 'Yellow' } },
-  { name: 'مشرف شات', options: { permissions: ['ManageMessages'] as any, color: 'LightOrange' } },
-  { name: 'فريق الدعم', options: { permissions: ['ManageMessages'] as any, color: 'Green' } },
-  { name: 'مراقب تجريبي', options: { permissions: ['ManageMessages'] as any, color: 'Grey' } },
-  { name: 'مدير البوت', options: { permissions: ['ManageRoles', 'ManageChannels'] as any, color: 'Blue' } },
+  { name: 'مشرف شات', options: { permissions: ['ManageMessages'] as any, color: '#FFB347' } },
+  { name: 'فريق الدعم', options: { permissions: [] as any, color: 'Green' } },
+  { name: 'مراقب تجريبي', options: { permissions: [] as any, color: 'Grey' } },
+  { name: 'مدير البوت', options: { permissions: [] as any, color: 'Blue' } },
   { name: 'مدير السجلات', options: { permissions: ['ViewAuditLog', 'ManageMessages'] as any, color: 'Purple' } },
 ];
 
 const eventRoles: RoleSpec[] = [
-  { name: 'مدير الفعاليات', options: { permissions: ['ManageChannels'] as any, color: 'DarkVividPink' } },
+  { name: 'مدير الفعاليات', options: { permissions: [] as any, color: 'DarkVividPink' } },
   { name: 'منظم الفعاليات', options: { permissions: [] as any, color: 'DarkVividPink' } },
   { name: 'منظم المسابقات', options: { permissions: [] as any, color: 'DarkVividPink' } },
   { name: 'مسؤول الجوائز', options: { permissions: [] as any, color: 'DarkGold' } },
@@ -53,7 +53,6 @@ export default {
       return;
     }
 
-    // permission guard
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
       await interaction.reply({ content: '❌ أنت لا تملك صلاحية إنشاء الرتب. (تحتاج Manage Guild)', ephemeral: true });
       return;
@@ -63,6 +62,9 @@ export default {
 
     const guild = interaction.guild as Guild;
     const report: string[] = [];
+    await guild.roles.fetch().catch((error) => {
+      report.push(`- ⚠️ تعذر تحديث قائمة الرتب: ${(error as Error).message}`);
+    });
 
     const createRoles = async (roles: RoleSpec[]) => {
       for (const spec of roles) {
@@ -81,36 +83,13 @@ export default {
       }
     };
 
-    // create in groups to make ordering easier
     await createRoles(staffRoles);
     await createRoles(eventRoles);
     await createRoles(memberRoles);
-
-    // Try to set role positions to match desired hierarchy (staffRoles first -> highest)
-    try {
-      const desiredOrder = [...staffRoles.map((r) => r.name), ...eventRoles.map((r) => r.name), ...memberRoles.map((r) => r.name)];
-      const roleManager = guild.roles;
-      const positions: { role: string; position: number }[] = [];
-
-      // compute positions starting from top (just below guild's highest role)
-      const highest = guild.roles.highest?.position ?? (guild.roles.cache.size - 1);
-      let pos = highest;
-      for (const name of desiredOrder) {
-        const role = guild.roles.cache.find((r) => r.name === name);
-        if (!role) continue;
-        positions.push({ role: role.id, position: pos });
-        pos -= 1;
-      }
-
-      // apply positions
-      if (positions.length > 0) {
-        await roleManager.setPositions(positions as any);
-      }
-    } catch (err: any) {
-      // ignore but continue
-      console.error('Failed to set role positions:', err);
-    }
-
-    await interaction.editReply({ content: `تمت عملية إنشاء/التحقق من الرتب. راجع النتيجة أعلاه في السجل.`, ephemeral: true });
+    const output = report.join('\n');
+    await interaction.editReply(
+      `${output.slice(0, 1700)}\n\n` +
+        'لم أعدّل صلاحيات الرتب الموجودة أو ترتيب الرتب الحالية. ضع الرتب الجديدة تحت رتبة البوت، ثم رتّبها حسب التسلسل في إعدادات السيرفر.',
+    );
   },
 };

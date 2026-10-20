@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
+import { ChannelType, SlashCommandBuilder, ChatInputCommandInteraction as CommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { prisma } from '../../db/client';
 
 export default {
@@ -6,10 +6,14 @@ export default {
     .setName('اعداد-اللوق')
     .setDescription('إعداد قنوات اللوق للـ Discord')
     .addChannelOption((option) =>
-      option.setName('القناة').setDescription('القناة المستخدمة للـ لوق الرسائل').setRequired(false)
+      option
+        .setName('القناة')
+        .setDescription('القناة النصية المخصصة لهذا النوع من السجلات')
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+        .setRequired(true)
     )
     .addStringOption((option) =>
-      option.setName('النوع').setDescription('نوع اللوق').setRequired(false).addChoices(
+      option.setName('النوع').setDescription('نوع اللوق').setRequired(true).addChoices(
         { name: 'عام', value: 'general' },
         { name: 'رسائل', value: 'messages' },
         { name: 'أعضاء', value: 'members' },
@@ -33,8 +37,23 @@ export default {
       return;
     }
 
-    const channel = interaction.options.getChannel('القناة');
-    const type = interaction.options.getString('النوع') || 'general';
+    const channelOption = interaction.options.getChannel('القناة', true);
+    const channel = await interaction.guild.channels.fetch(channelOption.id).catch(() => null);
+    const type = interaction.options.getString('النوع', true);
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      await interaction.reply({ content: '❌ اختر قناة نصية موجودة في هذا السيرفر.', ephemeral: true });
+      return;
+    }
+    if (type === 'moderation' || type === 'tickets') {
+      const everyonePermissions = channel.permissionsFor(interaction.guild.roles.everyone);
+      if (!everyonePermissions || everyonePermissions.has(PermissionFlagsBits.ViewChannel)) {
+        await interaction.reply({
+          content: '❌ سجلات الإشراف والتذاكر يجب أن تكون في قناة لا يستطيع @everyone رؤيتها.',
+          ephemeral: true,
+        });
+        return;
+      }
+    }
 
     const settings = await prisma.logSetting.upsert({
       where: { guildId: interaction.guild.id },
@@ -67,7 +86,7 @@ export default {
     const embed = new EmbedBuilder()
       .setColor('#5865F2')
       .setTitle('📋 إعدادات اللوق')
-      .setDescription('تم تحديث إعدادات اللوق في السيرفر')
+      .setDescription('تم حفظ قناة اللوق. لن تُرسل سجلات الإشراف أو التذاكر إلى القناة العامة.')
       .addFields(
         { name: 'النوع', value: selected?.label ?? 'عام', inline: true },
         { name: 'القناة', value: channel ? `<#${channel.id}>` : 'غير محدد', inline: true }

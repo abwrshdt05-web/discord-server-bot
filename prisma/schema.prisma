@@ -1,29 +1,113 @@
-import { SlashCommandBuilder, CommandInteraction, PermissionFlagsBits } from 'discord.js';
-import { prisma } from '../../db/client';
-import { logEventAction } from '../../services/eventService';
+generator client {
+  provider = "prisma-client-js"
+}
 
-export default {
-  data: new SlashCommandBuilder()
-    .setName('فعالية-حذف')
-    .setDescription('حذف فعالية')
-    .addStringOption((option) => option.setName('الاسم').setDescription('اسم الفعالية').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-  async execute(interaction: CommandInteraction) {
-    if (!interaction.guild) {
-      await interaction.reply({ content: '❌ لا يمكن استخدام هذا الأمر خارج السيرفر.', ephemeral: true });
-      return;
-    }
+model GuildConfig {
+  guildId                     String   @id
+  ticketCategoryId            String?
+  ticketClosedCategoryId      String?
+  ticketLogChannelId          String?
+  ticketPanelChannelId        String?
+  ticketPanelMessageId        String?
+  ticketStaffRoleIds          String[] @default([])
+  ticketTranscriptEnabled     Boolean  @default(true)
+  ticketMessageLoggingEnabled Boolean  @default(false)
+  allowDuplicateTickets       Boolean  @default(false)
+  moderationLogChannel        String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
 
-    const name = interaction.options.getString('الاسم', true);
-    const event = await prisma.guildEvent.findFirst({ where: { guildId: interaction.guild.id, name } });
-    if (!event) {
-      await interaction.reply({ content: '❌ لم يتم العثور على هذه الفعالية.', ephemeral: true });
-      return;
-    }
+model LogSetting {
+  guildId             String  @id
+  generalChannelId    String?
+  messageChannelId    String?
+  memberChannelId     String?
+  voiceChannelId      String?
+  roleChannelId       String?
+  channelChannelId    String?
+  moderationChannelId String?
+  ticketChannelId     String?
+  levelChannelId      String?
+}
 
-    await prisma.guildEvent.delete({ where: { id: event.id } });
-    await logEventAction(interaction.guild, '🗑️ تم حذف فعالية', `الفعالية: ${event.name}\nبواسطة: <@${interaction.user.id}>`);
-    await interaction.reply({ content: `✅ تم حذف فعالية: ${event.name}`, ephemeral: true });
-  },
-};
+model Ticket {
+  id         String    @id @default(cuid())
+  guildId    String
+  channelId  String    @unique
+  creatorId  String
+  ticketType String
+  number     Int
+  status     String    @default("open")
+  assigneeId String?
+  openKey    String?   @unique
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([guildId, status])
+  @@index([guildId, creatorId, ticketType, status])
+}
+
+model ModerationCase {
+  id          String   @id @default(cuid())
+  guildId     String
+  userId      String
+  moderatorId String
+  action      String
+  reason      String
+  createdAt   DateTime @default(now())
+
+  @@index([guildId, createdAt])
+}
+
+model InteractiveRole {
+  guildId   String
+  roleId    String
+  category  String
+  label     String?
+  emoji     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([guildId, roleId])
+  @@index([guildId, category])
+}
+
+model GuildEvent {
+  id              String                  @id @default(cuid())
+  guildId         String
+  organizerId     String
+  name            String
+  description     String
+  scheduledAt     DateTime
+  durationMinutes Int                     @default(60)
+  maxParticipants Int                     @default(20)
+  rewards         String                  @default("غير محدد")
+  rules           String                  @default("لا توجد شروط")
+  channelId       String?
+  imageUrl        String?
+  status          String                  @default("scheduled")
+  eventNumber     Int
+  createdAt       DateTime                @default(now())
+  participants    GuildEventParticipant[]
+
+  @@index([guildId, name])
+}
+
+model GuildEventParticipant {
+  id       String     @id @default(cuid())
+  guildId  String
+  eventId  String
+  userId   String
+  joinedAt DateTime   @default(now())
+  event    GuildEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, eventId, userId])
+  @@index([eventId, joinedAt])
+}

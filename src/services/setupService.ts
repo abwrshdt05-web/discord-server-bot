@@ -1,5 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, CommandInteraction, EmbedBuilder, Guild, GuildMember, TextChannel, User } from 'discord.js';
 import { prisma } from '../db/client';
+import { applyMissingChannelStructure } from './channelCleanupService';
 
 function escapeValue(value: string | undefined | null) {
   return (value || 'غير محدد').slice(0, 1000);
@@ -150,4 +151,8 @@ export async function handleEventButton(interaction: any) {
       : 'لا يوجد مشاركون بعد.';
     await interaction.reply({ content: `👥 المشاركون في ${event.name}\n${names}`, ephemeral: true });
   }
+}
+
+export async function setupServerDefaults(guild: Guild) {
+  return applyMissingChannelStructure(guild);
 }

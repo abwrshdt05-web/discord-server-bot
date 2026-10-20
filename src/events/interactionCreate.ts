@@ -1,64 +1,70 @@
-import { ChannelType, Guild, PermissionFlagsBits } from 'discord.js';
+import { Client, Events, Interaction } from 'discord.js';
+import { CommandHandler } from '../handlers/commandHandler';
+import { confirmDuplicateChannelDeletion } from '../services/channelCleanupService';
+import { handleEventButton } from '../services/eventService';
+import { toggleInteractiveRole } from '../services/interactiveRoleService';
+import {
+  handleTicketButtonInteraction,
+} from './ticketInteractions';
+import { logger } from '../utils/logger';
 
-export async function setupEventTeamRoles(guild: Guild) {
-  const roleNames = [
-    '🎉 مدير الفعاليات',
-    '🎪 منظم فعاليات',
-    '🎮 منظم مسابقات',
-    '🎁 مسؤول الجوائز',
-    '📢 مسؤول إعلانات الفعاليات',
-  ];
+const registeredClients = new WeakSet<Client>();
 
-  for (const name of roleNames) {
-    const existing = guild.roles.cache.find((role) => role.name === name);
-    if (!existing) {
-      await guild.roles.create({
-        name,
-        color: '#FFB000',
-        reason: 'إنشاء أدوار فريق الفعاليات',
-      });
+export function registerInteractionCreateEvent(client: Client, commandHandler: CommandHandler) {
+  if (registeredClients.has(client)) return;
+  registeredClients.add(client);
+
+  client.on(Events.InteractionCreate, async (interaction: Interaction) => {
+    try {
+      if (interaction.isChatInputCommand()) {
+        const command = commandHandler.commands.get(interaction.commandName);
+        if (!command) {
+          await interaction.reply({ content: '❌ هذا الأمر غير مسجل حاليًا.', ephemeral: true });
+          return;
+        }
+        await command.execute(interaction, client);
+        return;
+      }
+
+      if (!interaction.isButton()) return;
+      if (interaction.customId.startsWith('ticket:')) {
+        await handleTicketButtonInteraction(interaction);
+        return;
+      }
+      if (interaction.customId.startsWith('role_toggle:')) {
+        await toggleInteractiveRole(interaction);
+        return;
+      }
+      if (interaction.customId.startsWith('event_')) {
+        await handleEventButton(interaction);
+        return;
+      }
+      if (interaction.customId.startsWith('channel-delete-confirm:')) {
+        const [, ownerId, channelId] = interaction.customId.split(':');
+        if (ownerId !== interaction.user.id || !interaction.guild) {
+          await interaction.reply({ content: '❌ هذا التأكيد ليس لك أو انتهت صلاحيته.', ephemeral: true });
+          return;
+        }
+        const result = await confirmDuplicateChannelDeletion(
+          interaction.guild,
+          channelId,
+          interaction.user.id,
+        );
+        await interaction.update({
+          content: result.deleted ? `✅ ${result.reason}` : `⛔ ${result.reason}`,
+          components: [],
+        });
+      }
+    } catch (error) {
+      logger.error({ err: error }, 'Interaction processing failed');
+      if (interaction.isRepliable()) {
+        const message = '❌ حدث خطأ أثناء تنفيذ الأمر. راجع صلاحيات البوت أو سجلات التشغيل.';
+        if (interaction.deferred || interaction.replied) {
+          await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+        } else {
+          await interaction.reply({ content: message, ephemeral: true }).catch(() => undefined);
+        }
+      }
     }
-  }
-}
-
-export async function setupEventCategoryAndChannels(guild: Guild) {
-  const categoryName = '🎉・الفعاليات';
-  let category = guild.channels.cache.find((channel) => channel.name === categoryName && channel.type === ChannelType.GuildCategory);
-  if (!category) {
-    category = await guild.channels.create({
-      name: categoryName,
-      type: ChannelType.GuildCategory,
-      reason: 'إنشاء قسم الفعاليات',
-    });
-  }
-
-  const channels = [
-    '📢・إعلانات-الفعاليات',
-    '💡・اقتراحات-الفعاليات',
-    '🎉・الفعاليات',
-    '🏆・نتائج-الفعاليات',
-    '🎁・جوائز-الفعاليات',
-    '🔒・فريق-الفعاليات',
-    '🔊・اجتماع-الفعاليات',
-    '🎤・فعالية-1',
-    '🎤・فعالية-2',
-    '📋・لوق-الفعاليات',
-  ];
-
-  for (const name of channels) {
-    const exists = guild.channels.cache.find((channel) => channel.name === name);
-    if (!exists) {
-      await guild.channels.create({
-        name,
-        type: name.includes('🔊・') || name.includes('🎤・') ? ChannelType.GuildVoice : ChannelType.GuildText,
-        parent: category.id,
-        reason: 'إنشاء قنوات الفعاليات',
-      });
-    }
-  }
-}
-
-export async function setupServerDefaults(guild: Guild) {
-  await setupEventTeamRoles(guild);
-  await setupEventCategoryAndChannels(guild);
+  });
 }

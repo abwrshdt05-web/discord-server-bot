@@ -1,52 +1,56 @@
 import {
-  SlashCommandBuilder,
+  ChatInputCommandInteraction,
   PermissionFlagsBits,
-  CommandInteraction,
+  SlashCommandBuilder,
 } from 'discord.js';
 import { logModerationAction } from '../../services/moderationService';
+import { logger } from '../../utils/logger';
+
+const command = new SlashCommandBuilder()
+  .setName('unban')
+  .setDescription('إلغاء حظر مستخدم')
+  .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+  .addStringOption((option) =>
+    option.setName('userid').setDescription('معرف المستخدم').setRequired(true),
+  )
+  .addStringOption((option) =>
+    option.setName('reason').setDescription('سبب إلغاء الحظر').setMaxLength(512).setRequired(false),
+  );
 
 export default {
-  data: new SlashCommandBuilder()
-    .setName('ban')
-    .setDescription('Ban a member from the server')
-    .addUserOption((option) =>
-      option.setName('user').setDescription('The member to ban').setRequired(true)
-    )
-    .addStringOption((option) =>
-      option.setName('reason').setDescription('Reason for banning').setRequired(false)
-    ),
-
-  async execute(interaction: CommandInteraction) {
+  data: command,
+  async execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.guild) {
-      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      await interaction.reply({ content: '❌ هذا الأمر يعمل داخل السيرفر فقط.', ephemeral: true });
       return;
     }
-
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.BanMembers)) {
-      await interaction.reply({ content: 'You do not have permission to ban members.', ephemeral: true });
+      await interaction.reply({ content: '❌ تحتاج صلاحية حظر الأعضاء لإلغاء الحظر.', ephemeral: true });
       return;
     }
 
-    const targetUser = interaction.options.getUser('user', true);
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-
-    if (targetUser.id === interaction.user.id) {
-      await interaction.reply({ content: 'You cannot ban yourself.', ephemeral: true });
+    const userId = interaction.options.getString('userid', true).trim();
+    if (!/^\d{17,20}$/.test(userId)) {
+      await interaction.reply({ content: '❌ أدخل معرف Discord صحيحًا.', ephemeral: true });
       return;
     }
+    const reason = interaction.options.getString('reason') || 'لم يُحدد سبب';
 
+    await interaction.deferReply({ ephemeral: true });
     try {
-      await interaction.guild.members.ban(targetUser, { reason });
+      await interaction.guild.members.unban(userId, reason);
       await logModerationAction({
+        guild: interaction.guild,
         guildId: interaction.guild.id,
-        userId: targetUser.id,
+        userId,
         moderatorId: interaction.user.id,
-        action: 'ban',
+        action: 'unban',
         reason,
       });
-      await interaction.reply({ content: `✅ ${targetUser.tag} was banned. Reason: ${reason}` });
+      await interaction.editReply(`✅ تم إلغاء حظر المستخدم ${userId}.\n**السبب:** ${reason}`);
     } catch (error) {
-      await interaction.reply({ content: 'Failed to ban that member. Check bot permissions.', ephemeral: true });
+      logger.error({ err: error, guildId: interaction.guild.id, targetId: userId }, 'Unban command failed');
+      await interaction.editReply('❌ تعذر إلغاء الحظر. تأكد من المعرف وأن المستخدم محظور.');
     }
   },
 };

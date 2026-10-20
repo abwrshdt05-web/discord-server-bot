@@ -1,58 +1,78 @@
 import {
-  SlashCommandBuilder,
+  ChatInputCommandInteraction,
   PermissionFlagsBits,
-  CommandInteraction,
+  SlashCommandBuilder,
 } from 'discord.js';
 import { logModerationAction } from '../../services/moderationService';
+import { logger } from '../../utils/logger';
+
+const command = new SlashCommandBuilder()
+  .setName('ban')
+  .setDescription('حظر عضو من السيرفر')
+  .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+  .addUserOption((option) => option.setName('user').setDescription('العضو المراد حظره').setRequired(true))
+  .addStringOption((option) =>
+    option.setName('reason').setDescription('سبب الحظر').setMaxLength(512).setRequired(false),
+  );
 
 export default {
-  data: new SlashCommandBuilder()
-    .setName('kick')
-    .setDescription('Kick a member from the server')
-    .addUserOption((option) =>
-      option.setName('user').setDescription('The member to kick').setRequired(true)
-    )
-    .addStringOption((option) =>
-      option.setName('reason').setDescription('Reason for kicking').setRequired(false)
-    ),
-
-  async execute(interaction: CommandInteraction) {
+  data: command,
+  async execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.guild) {
-      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      await interaction.reply({ content: '❌ هذا الأمر يعمل داخل السيرفر فقط.', ephemeral: true });
       return;
     }
-
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.KickMembers)) {
-      await interaction.reply({ content: 'You do not have permission to kick members.', ephemeral: true });
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.BanMembers)) {
+      await interaction.reply({ content: '❌ تحتاج صلاحية حظر الأعضاء.', ephemeral: true });
       return;
     }
 
     const targetUser = interaction.options.getUser('user', true);
-    const reason = interaction.options.getString('reason') || 'No reason provided';
-    const targetMember = interaction.guild.members.cache.get(targetUser.id) || await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-
-    if (!targetMember) {
-      await interaction.reply({ content: 'That user is not in the server.', ephemeral: true });
+    const reason = interaction.options.getString('reason') || 'لم يُحدد سبب';
+    if (targetUser.id === interaction.user.id || targetUser.id === interaction.client.user?.id) {
+      await interaction.reply({ content: '❌ لا يمكن حظر نفسك أو البوت.', ephemeral: true });
+      return;
+    }
+    if (targetUser.id === interaction.guild.ownerId) {
+      await interaction.reply({ content: '❌ لا يمكن حظر مالك السيرفر.', ephemeral: true });
       return;
     }
 
-    if (targetMember.id === interaction.user.id) {
-      await interaction.reply({ content: 'You cannot kick yourself.', ephemeral: true });
+    const [actor, targetMember, botMember] = await Promise.all([
+      interaction.guild.members.fetch(interaction.user.id).catch(() => null),
+      interaction.guild.members.fetch(targetUser.id).catch(() => null),
+      interaction.guild.members.fetchMe().catch(() => null),
+    ]);
+    if (!actor || !botMember) {
+      await interaction.reply({ content: '❌ تعذر التحقق من صلاحيات العضو أو البوت.', ephemeral: true });
+      return;
+    }
+    if (targetMember && targetMember.roles.highest.comparePositionTo(actor.roles.highest) >= 0 &&
+        actor.id !== interaction.guild.ownerId) {
+      await interaction.reply({ content: '❌ لا يمكنك حظر عضو رتبته مساوية لرتبتك أو أعلى منها.', ephemeral: true });
+      return;
+    }
+    if (!botMember.permissions.has(PermissionFlagsBits.BanMembers) ||
+        (targetMember && targetMember.roles.highest.comparePositionTo(botMember.roles.highest) >= 0)) {
+      await interaction.reply({ content: '❌ رتبة البوت أو صلاحياته لا تسمح بحظر هذا العضو.', ephemeral: true });
       return;
     }
 
+    await interaction.deferReply({ ephemeral: true });
     try {
-      await targetMember.kick(reason);
+      await interaction.guild.members.ban(targetUser, { reason });
       await logModerationAction({
+        guild: interaction.guild,
         guildId: interaction.guild.id,
-        userId: targetMember.id,
+        userId: targetUser.id,
         moderatorId: interaction.user.id,
-        action: 'kick',
+        action: 'ban',
         reason,
       });
-      await interaction.reply({ content: `✅ ${targetUser.tag} was kicked. Reason: ${reason}` });
+      await interaction.editReply(`✅ تم حظر ${targetUser.tag}.\n**السبب:** ${reason}`);
     } catch (error) {
-      await interaction.reply({ content: 'Failed to kick that member. Check bot permissions.', ephemeral: true });
+      logger.error({ err: error, guildId: interaction.guild.id, targetId: targetUser.id }, 'Ban command failed');
+      await interaction.editReply('❌ تعذر حظر العضو. تحقق من الصلاحيات وترتيب الرتب.');
     }
   },
 };
